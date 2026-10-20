@@ -295,10 +295,30 @@ if (-not $ReportPath) {
 
 $results = [System.Collections.Generic.List[object]]::new()
 $index = 0
+$runTimer = [System.Diagnostics.Stopwatch]::StartNew()
 
 foreach ($file in $files) {
     $index++
-    Write-Progress -Activity 'Processing sensitivity labels' -Status $file.FullName -PercentComplete ([int](($index / $files.Count) * 100))
+
+    # A bare percentage can't be told apart from a hang. Showing a counter, elapsed time and a
+    # projected remaining time makes a slow run (e.g. OneDrive hydrating cloud-only files)
+    # clearly distinguishable from a stuck one.
+    $elapsed = $runTimer.Elapsed
+    $status = 'File {0} of {1} | elapsed {2:hh\:mm\:ss}' -f $index, $files.Count, $elapsed
+    if ($index -gt 1) {
+        $perFile = $elapsed.TotalSeconds / ($index - 1)
+        $remaining = [TimeSpan]::FromSeconds($perFile * ($files.Count - $index + 1))
+        $status += ' | ~{0:hh\:mm\:ss} left ({1:n1}s/file)' -f $remaining, $perFile
+    }
+
+    $progress = @{
+        Activity         = 'Processing sensitivity labels'
+        Status           = $status
+        CurrentOperation = $file.FullName
+        PercentComplete  = [int](($index / $files.Count) * 100)
+    }
+    if ($index -gt 1) { $progress.SecondsRemaining = [int]$remaining.TotalSeconds }
+    Write-Progress @progress
 
     $before = Get-CurrentLabelInfo -FilePath $file.FullName
     $record = [pscustomobject]@{
@@ -430,6 +450,7 @@ foreach ($file in $files) {
 }
 
 Write-Progress -Activity 'Processing sensitivity labels' -Completed
+$runTimer.Stop()
 
 # --- on-screen detail -------------------------------------------------------
 
@@ -484,6 +505,8 @@ Write-Host 'Summary' -ForegroundColor Green
 $results | Group-Object Status | Sort-Object Name | ForEach-Object {
     Write-Host ('  {0,-10} {1}' -f $_.Name, $_.Count)
 }
+Write-Host ('  {0,-10} {1:hh\:mm\:ss} ({2:n1}s/file)' -f 'Duration', $runTimer.Elapsed,
+    $(if ($results.Count) { $runTimer.Elapsed.TotalSeconds / $results.Count } else { 0 }))
 
 if ($PSCmdlet.ParameterSetName -eq 'Report') {
     Write-Host ''

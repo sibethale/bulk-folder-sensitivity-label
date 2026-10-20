@@ -190,6 +190,34 @@ Excluded by -Include/-Exclude: 1 file(s) -> .ps1 x1
 so you can see at a glance that the folder held more files than were processed. Run with
 `-ShowCurrentLabels` and no `-Include` to see everything the folder contains.
 
+### "Is it stuck, or just slow?"
+
+Large runs over OneDrive/SharePoint-synced folders are slow because every cloud-only file must be
+downloaded in full before its label can be read. Seconds per file is normal.
+
+The progress bar shows a counter, elapsed time and a projected finish so you can tell the
+difference without guessing:
+
+```
+Processing sensitivity labels
+File 118 of 244 | elapsed 00:04:12 | ~00:04:29 left (2.1s/file)
+C:\Data\Reports\03 - Design.docx
+```
+
+To confirm from a second window, without disturbing the run:
+
+```powershell
+# CPU must increase between two samples ~20s apart
+Get-Process powershell | Format-Table Id, CPU, StartTime
+
+# The MIP SDK's own log should have been written to within the last minute
+(Get-Item "$env:LOCALAPPDATA\Microsoft\MSIP\mip\powershell.exe\mip\logs\mip_sdk.miplog").LastWriteTime
+```
+
+Frozen CPU *and* a stale log means it has genuinely hung. Otherwise it's working.
+
+The end-of-run `Summary` block also reports total `Duration` and the average seconds per file.
+
 ## Validation performed
 
 * `test-run.ps1` passes all 7 scenarios (report, WhatIf, apply, skip-already-labelled, force,
@@ -211,3 +239,10 @@ so you can see at a glance that the folder held more files than were processed. 
 * Labelling protected/encrypted content requires rights to that content.
 * For content already in SharePoint/OneDrive, prefer a Purview auto-labelling policy over running
   this against a synced folder.
+
+### Harmless messages you can ignore
+
+* `Error removing log file: ...\mip_sdk_backup.miplog` — the MIP SDK failing to rotate its own
+  log. It has nothing to do with your files and does not affect results.
+* A warning about `.849C9593-D756-4E56-8D6E-42412F2A707B` being *used by another process* — that
+  is OneDrive's internal sync marker, locked by OneDrive. It is reported and skipped.
