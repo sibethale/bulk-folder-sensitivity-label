@@ -1,0 +1,6 @@
+# Generated reports may contain file paths and label GUIDs - never commit them
+LabelReport-*.csv
+*.csv
+sandbox/
+*.log
+*.miplog
