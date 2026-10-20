@@ -222,6 +222,22 @@ function Get-CurrentLabelInfo {
     [pscustomobject]@{ LabelId = $id; LabelName = $name; Error = $null }
 }
 
+function Format-LabelError {
+    param([string]$Message)
+
+    # Service errors are terse and don't name the parameter that fixes them.
+    if ($Message -match 'justification') {
+        if ($JustificationMessage) {
+            return "$Message (a -JustificationMessage was supplied but the service still rejected it; the label policy may require a different downgrade reason)"
+        }
+        return "$Message - re-run with -JustificationMessage 'your reason'. Policy demands a reason when lowering or removing a label."
+    }
+    if ($Message -match 'being used by another process') {
+        return "$Message - close the file, or exclude lock files with -Exclude '~`$*'."
+    }
+    $Message
+}
+
 function Invoke-WithRetry {
     param(
         [scriptblock]$Action,
@@ -383,8 +399,8 @@ foreach ($file in $files) {
             catch {
                 $record.Action = 'RemoveLabel'
                 $record.Status = 'Error'
-                $record.Message = $_.Exception.Message
-                Write-Warning ('{0}: {1}' -f $file.FullName, $_.Exception.Message)
+                $record.Message = Format-LabelError -Message $_.Exception.Message
+                Write-Warning ('{0}: {1}' -f $file.FullName, $record.Message)
             }
         }
         else {
@@ -434,8 +450,8 @@ foreach ($file in $files) {
             catch {
                 $record.Action = 'SetLabel'
                 $record.Status = 'Error'
-                $record.Message = $_.Exception.Message
-                Write-Warning ('{0}: {1}' -f $file.FullName, $_.Exception.Message)
+                $record.Message = Format-LabelError -Message $_.Exception.Message
+                Write-Warning ('{0}: {1}' -f $file.FullName, $record.Message)
             }
         }
         else {
@@ -507,6 +523,13 @@ $results | Group-Object Status | Sort-Object Name | ForEach-Object {
 }
 Write-Host ('  {0,-10} {1:hh\:mm\:ss} ({2:n1}s/file)' -f 'Duration', $runTimer.Elapsed,
     $(if ($results.Count) { $runTimer.Elapsed.TotalSeconds / $results.Count } else { 0 }))
+
+$needJustification = @($results | Where-Object { $_.Status -eq 'Error' -and $_.Message -match 'justification' })
+if ($needJustification.Count -gt 0 -and -not $JustificationMessage) {
+    Write-Host ''
+    Write-Host ('{0} file(s) were rejected because the policy requires a downgrade reason.' -f $needJustification.Count) -ForegroundColor Yellow
+    Write-Host "Re-run the same command with: -JustificationMessage 'Reviewed and reclassified'" -ForegroundColor Yellow
+}
 
 if ($PSCmdlet.ParameterSetName -eq 'Report') {
     Write-Host ''

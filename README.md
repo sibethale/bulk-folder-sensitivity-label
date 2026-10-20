@@ -91,6 +91,15 @@ Downgrade (e.g. Confidential -> General) = apply the lower label plus a justific
 Run-LabelChanger.cmd -Path "C:\Data\Old" -Recurse -LabelId "<lower-label-guid>" -JustificationMessage "Reviewed, no longer confidential"
 ```
 
+There is **no default justification**. If you don't pass `-JustificationMessage`, nothing is sent
+and the service rejects those files with *"Justification is required"*. The text you supply is
+forwarded verbatim, is the same for every file in the run, and is free text rather than one of the
+fixed reasons Office offers — it is recorded against the label-change event in the Purview audit
+log, so write something a reviewer would accept.
+
+Files at or below the target label don't need one, so a run can partly succeed. Re-running with a
+justification only retries the failures; everything already correct is skipped.
+
 ## Parameters
 
 | Parameter | Purpose |
